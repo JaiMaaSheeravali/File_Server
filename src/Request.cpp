@@ -2,6 +2,10 @@
 
 #include <iostream>
 #include <unistd.h>
+#include <cstring>
+
+using std::cout;
+using std::cin;
 
 int Request::accept_request(int server_socket)
 {
@@ -23,33 +27,44 @@ int Request::accept_request(int server_socket)
 
 void Request::handle_request()
 {
-    while (true)
-    {
-        std::cout << "Reading request...\n";
-        char recieved[1024];
-        int bytes_received = recv(client.sockfd, recieved, 1024, 0);
-        if (bytes_received == 0)
+
+    while(true){
+        char action[200];
+        memset(action, '\0', sizeof(action));
+
+        if (recv(client.sockfd, &action, sizeof(action), 0) <= 0){
+            cout << "Couldn't receive Command\n";
+            break;
+        }
+
+        if(strcmp(action, "upload") == 0){
+            
+            get_file();
+        
+        } else if(strcmp(action, "download") == 0){
+            
+            send_file();
+
+        } else if(strcmp(action, "list") == 0){
+
+            get_file_list();
+        } else if(strcmp(action, "delete") == 0){
+            
+            delete_file();
+        } else if(strcmp(action, "rename") == 0){
+            
+            rename_file();
+        } else if(strcmp(action, "exit") == 0){
             break;
 
-        printf("recieved:  %.*s", bytes_received, recieved);
+        } else {
+            cout << "Invalid action" << std::endl;
 
-        if (send(client.sockfd, "Hello, world!", 13, 0) == -1)
-            perror("send");
+        }
     }
 
     std::cout << "Client ";
     client.printIpAddress();
     std::cout << " disconnected\n";
     close(client.sockfd);
-
-    // while (true)
-    // {
-    //     char action[200];
-    //     memset(action, '\0', sizeof(action));
-    //     if (recv(client.sockfd, &action, sizeof(action), 0) < 0)
-    //     {
-    //         std::cerr << "Couldn't receive Command\n";
-    //         return;
-    //     }
-    //     if (strcmp(action, "upload") == 0)
 }

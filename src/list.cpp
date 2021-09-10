@@ -15,6 +15,8 @@ int Request::get_file_list(){
     struct dirent *dir;
     d = opendir(".");
     string list;
+    dir = readdir(d);
+    dir = readdir(d);
     if (d)
     {
         while ((dir = readdir(d)) != NULL)

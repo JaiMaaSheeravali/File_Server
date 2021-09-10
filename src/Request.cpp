@@ -1,4 +1,5 @@
 #include "../include/Request.hpp"
+#include "../include/color.hpp"
 
 #include <iostream>
 #include <unistd.h>
@@ -19,9 +20,9 @@ int Request::accept_request(int server_socket)
                 sizeof(client.serv), NI_NUMERICHOST | NI_NUMERICSERV);
 
     // print which client got connected to the server
-    std::cout << "Client ";
+    std::cout << CYAN << "Client ";
     client.printIpAddress();
-    std::cout << " connected\n";
+    std::cout << " connected\n" << RESET;
     return client.sockfd;
 }
 
@@ -33,7 +34,7 @@ void Request::handle_request()
         memset(action, '\0', sizeof(action));
 
         if (recv(client.sockfd, &action, sizeof(action), 0) <= 0){
-            cout << "Couldn't receive Command\n";
+            cout << RED << "Couldn't receive Command\n" << RESET;
             break;
         }
 
@@ -58,13 +59,13 @@ void Request::handle_request()
             break;
 
         } else {
-            cout << "Invalid action" << std::endl;
+            cout << RED << "Invalid action" << RESET << std::endl;
 
         }
     }
 
-    std::cout << "Client ";
+    std::cout << MAGENTA << "Client ";
     client.printIpAddress();
-    std::cout << " disconnected\n";
+    std::cout << " disconnected\n" << RESET;
     close(client.sockfd);
 }

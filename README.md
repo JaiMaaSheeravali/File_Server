@@ -7,4 +7,4 @@ CSN 510: File Server
 3. `sudo apt install build-essential`
 4. `cmake .`
 5. `make`
-6. `./output/Server`
+6. `./output/server`

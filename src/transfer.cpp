@@ -49,7 +49,8 @@ char* Request::recv_string(){
     }
     cout << "Size of file: " << file_size << "\n";
 
-    char *buffer = new char[file_size];
+    char *buffer = new char[file_size+1];
+    buffer[file_size] = '\0';
 
     if(recv(client.sockfd, buffer, file_size, 0) < 0){
         cout << "Couldn't receive\n";

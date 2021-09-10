@@ -6,7 +6,7 @@ project(server)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
 # creates the variable EXEC and sets it to hello
-set(EXEC main)
+set(EXEC server)
 
 # set the C++17 standard
 set(CMAKE_CXX_STANDARD 17)

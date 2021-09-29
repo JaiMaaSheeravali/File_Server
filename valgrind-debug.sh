@@ -3,4 +3,4 @@ valgrind --leak-check=full \
          --track-origins=yes \
          --verbose \
          --log-file=valgrind-out.txt \
-         ./output/main #./a.out params
+         ./output/server #./a.out params

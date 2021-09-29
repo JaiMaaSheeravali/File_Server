@@ -10,12 +10,12 @@ using namespace std;
 
 int Request::send_data(const char *buffer, const int size){
 
-    if(send(client.sockfd, &size, sizeof(int), 0) < 0){
+    if(send(sockfd, &size, sizeof(int), 0) < 0){
         cerr << RED << "Unable to send message size\n" << RESET;
         return -1;
     }
     
-    if(send(client.sockfd, buffer, size, 0) < 0){
+    if(send(sockfd, buffer, size, 0) < 0){
         cerr << RED << "Unable to send message content\n" << RESET;
         return -1;
     }
@@ -25,14 +25,14 @@ int Request::send_data(const char *buffer, const int size){
 int Request::recv_data(char* filename){
     int file_size = 0;
 
-    if (recv(client.sockfd, &file_size, sizeof(int), 0) < 0){
+    if (recv(sockfd, &file_size, sizeof(int), 0) < 0){
         cerr << RED << "Couldn't receive\n" << RESET;
         return -1;
     }
 
     char buffer[file_size];
 
-    if(recv(client.sockfd, buffer, file_size, 0) < 0){
+    if(recv(sockfd, buffer, file_size, 0) < 0){
         cerr << RED << "Couldn't receive\n" << RESET;
         return -1;
     }
@@ -45,14 +45,14 @@ int Request::recv_data(char* filename){
 char* Request::recv_string(){
     int file_size = 0;
 
-    if (recv(client.sockfd, &file_size, sizeof(int), 0) < 0){
+    if (recv(sockfd, &file_size, sizeof(int), 0) < 0){
         cerr << RED << "Couldn't receive\n" << RESET;
     }
 
     char *buffer = new char[file_size+1];
     buffer[file_size] = '\0';
 
-    if(recv(client.sockfd, buffer, file_size, 0) < 0){
+    if(recv(sockfd, buffer, file_size, 0) < 0){
         cerr << RED << "Couldn't receive\n" << RESET;
         return buffer;
     }

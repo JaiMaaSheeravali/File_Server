@@ -6,7 +6,6 @@
 class Client
 {
 public:
-    int sockfd;
     struct sockaddr_storage ipaddr;
     socklen_t ipaddr_len;
     char host[100];

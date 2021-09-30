@@ -84,7 +84,7 @@ int Request::accept_request(int server_socket)
 //     close(sockfd);
 // }
 
-bool Request::handle_request()
+int Request::handle_request()
 {
 
     /*  expecting
@@ -94,23 +94,22 @@ bool Request::handle_request()
     if (state == State::FETCHING)
     {
         int count = 0;
-        count = recv(sockfd, buffer, 4096, 0);
-        std::cout << "inter: " << buffer << std::endl;
-        int len = strlen(buffer);
-
-        if (len >= 2 && buffer[len - 1] == '\n')
+        count = recv(sockfd, buffer + strlen(buffer), 4096, 0);
+        if (count == 0)
         {
-            // extract username password, operation filename from buffer and then
-            // perform authorisation
-            // and then open the corresponding file if required
-            // if (!check_username_password(client.username, client.password))
-            // {
-            //     return -1;
-            // }
+            // disconnected
+            std::cout << MAGENTA << "Client ";
+            client.printIpAddress();
+            std::cout << " disconnected\n"
+                      << RESET;
+            close(sockfd);
+            return 1;
+        }
 
-            state = State::RECEIVING;
-            std::cout << buffer;
-            memset(buffer, '\0', sizeof(buffer));
+        if ((strstr(buffer, "done")))
+        {
+            std::cout << "completion \n";
+            return parse_request();
         }
         else
         {
@@ -121,6 +120,22 @@ bool Request::handle_request()
     return 1;
 
     // return perform_operation();
+}
+
+int Request::parse_request()
+{
+    // extract username password, operation filename from buffer and then
+    // perform authorisation
+    // and then open the corresponding file if required
+    // if (!check_username_password(client.username, client.password))
+    // {
+    //     return -1;
+    // }
+    state = State::RECEIVING;
+    std::cout << buffer;
+    memset(buffer, '\0', sizeof(buffer));
+    close(sockfd);
+    return 1;
 }
 
 int Request::perform_operation()

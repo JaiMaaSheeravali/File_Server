@@ -24,8 +24,9 @@ public:
     int sockfd;
     struct pollfd *pollFd;
     int accept_request(int server_socket);
-    bool handle_request();
+    int handle_request();
     int perform_operation();
+    int parse_request();
     int send_file();
     int delete_file();
     int get_file();

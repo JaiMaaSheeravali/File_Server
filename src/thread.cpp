@@ -51,7 +51,6 @@ void *thread_function(void *arg)
             {
                 i++;
             }
-            std::cout << "i: " << i << "\n";
             // when the new connection is accepted, the server's thead from thread pool
             // will 'read' the client's request from the socket (that's why POLLIN is used)
             pollFds[i].fd = req->sockfd;
@@ -59,10 +58,10 @@ void *thread_function(void *arg)
 
             // tldr; hash map is used after poll system call
             /* long explanation: poll system call just tells us the socket(socket fd) at
-                        which the data can be read(POLLIN) or written(POLLOUT) but won't
-                        tell us which client that socket is connected to; for that we need a hash map
-                        that takes the socket id from poll system call and then returns the request object
-                        (which contains all the information about that client) */
+            which the data can be read(POLLIN) or written(POLLOUT) but won't
+            tell us which client that socket is connected to; for that we need a hash map
+            that takes the socket id from poll system call and then returns the request object
+            (which contains all the information about that client) */
             sockfdToReq[req->sockfd] = req;
 
             // store the address of corresponding pollFd in the request obj
@@ -94,10 +93,10 @@ void *thread_function(void *arg)
                 if (req->handle_request())
                 {
                     // request completed
+                    std::cout << "Client disconnected " << std::endl;
                     pollFds[i].fd = -1;
                     nfds--;
                     sockfdToReq.erase(fd);
-                    close(fd);
                     delete req;
                 }
             }

@@ -6,7 +6,8 @@ class Request
 {
 private:
     Client client;
-    char buffer[4096] = "\0";
+    static const int BUF_SIZE = 4096;
+    char buffer[BUF_SIZE] = "\0";
 
     enum class State : unsigned char
     {
@@ -20,7 +21,9 @@ private:
 
 public:
     ~Request();
-    int sockfd, localfd;
+    int sockfd, diskfilefd;
+    char fileSize[64];
+    int bytes_sent = 0, bytes_recvd = 0, bytes_left = 0;
     struct pollfd *pollFd;
     int accept_request(int server_socket);
     int handle_request();

@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <errno.h>
+#include <sys/sendfile.h>
 
 #include "../include/color.hpp"
 #include "../include/parse.hpp"
@@ -22,6 +24,7 @@ Request::~Request()
     std::cout << " disconnected\n"
               << RESET;
     close(sockfd);
+    close(diskfilefd);
 }
 
 int Request::accept_request(int server_socket)
@@ -100,6 +103,28 @@ int Request::accept_request(int server_socket)
 //     close(sockfd);
 // }
 
+ssize_t
+writen(int fd, const char *buffer, size_t n)
+{
+    ssize_t numWritten; /* # of bytes written by last write() */
+    size_t totWritten;  /* Total # of bytes written so far */
+    const char *buf = buffer;
+    for (totWritten = 0; totWritten < n;)
+    {
+        numWritten = write(fd, buf, n - totWritten);
+
+        if (numWritten <= 0)
+        {
+            if (numWritten == -1 && errno == EINTR)
+                continue; /* Interrupted --> restart write() */
+            else
+                return -1; /* Some other error */
+        }
+        totWritten += numWritten;
+    }
+    return totWritten; /* Must be 'n' bytes if we get here */
+}
+
 int Request::handle_request()
 {
 
@@ -109,8 +134,7 @@ int Request::handle_request()
     */
     if (state == State::FETCHING)
     {
-        int count = 0;
-        count = recv(sockfd, buffer + strlen(buffer), 4096, 0);
+        int count = recv(sockfd, buffer + strlen(buffer), BUF_SIZE, 0);
         if (count == 0)
         {
             // disconnected
@@ -128,7 +152,62 @@ int Request::handle_request()
             return 0;
         }
     }
-    return 1;
+    else if (state == State::LISTING)
+    {
+        return 1;
+    }
+    else if (state == State::RECEIVING)
+    {
+        // create a new buffer since we are going to write(in diskfd) whatever
+        // data received from the client in one go (no funny behavior)
+        char buffer[BUF_SIZE];
+        // get the data from the client, store it in the buffer
+        bytes_recvd = recv(sockfd, buffer, BUF_SIZE, NULL);
+
+        if (bytes_recvd == 0)
+        {
+            std::cout << "client done uploading" << std::endl;
+            return 1;
+        }
+        // copy the data from the buffer to the local disk file
+        if (writen(diskfilefd, buffer, bytes_recvd) < 0)
+        {
+            perror("write failed\n");
+            return 1;
+        }
+        return 0;
+    }
+    else if (state == State::SENDING)
+    {
+        std::cout << "entered sending section" << std::endl;
+        /* Sending file data */
+        while (bytes_left > 0)
+        {
+            // perform non blocking io on the socket file descriptor
+            if (((bytes_sent = sendfile(sockfd, diskfilefd, nullptr, BUFSIZ)) == -1))
+            {
+                if (errno == EAGAIN)
+                {
+                    std::cout << "blocked" << std::endl;
+                    // no data avalaible currently try again later (after poll)
+                    return 0;
+                }
+                else
+                {
+                    perror("failed file transfer");
+                    return 1;
+                }
+            }
+            std::cout << "bytes sent yet: " << bytes_sent << std::endl;
+            bytes_left -= bytes_sent;
+        }
+
+        return 1;
+    }
+    else
+    {
+        return 1;
+    }
 
     // return perform_operation();
 }
@@ -203,6 +282,7 @@ int Request::parse_request()
                     }
                     closedir(d);
                 }
+                pollFd->events = POLLOUT;
                 state = State::LISTING;
                 return 0;
             }
@@ -211,11 +291,11 @@ int Request::parse_request()
                 std::string filename = request_line.back();
                 std::string pathname;
                 if (isGlobal)
-                    pathname = "./storage/shared/" + username + "_" + filename;
+                    pathname = "./storage/shared/" + filename;
                 else
                     pathname = "./storage/private/" + username + "/" + filename;
 
-                localfd = open(pathname.c_str(), O_WRONLY | O_CREAT | O_EXCL);
+                diskfilefd = open(pathname.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
                 if (errno == EEXIST)
                 {
                     // file already exists so you cant upload
@@ -232,11 +312,11 @@ int Request::parse_request()
                 std::string filename = request_line.back();
                 std::string pathname;
                 if (isGlobal)
-                    pathname = "./storage/shared/" + username + "_" + filename;
+                    pathname = "./storage/shared/" + filename;
                 else
                     pathname = "./storage/private/" + username + "/" + filename;
 
-                localfd = open(pathname.c_str(), O_RDONLY);
+                diskfilefd = open(pathname.c_str(), O_RDONLY | O_NONBLOCK);
                 if (errno == ENOENT)
                 {
                     // file does not exist so you cannot download
@@ -245,12 +325,35 @@ int Request::parse_request()
                 }
 
                 // send(ACK)
+                /* Get file stats */
+                struct stat file_stat;
+                if (fstat(diskfilefd, &file_stat) < 0)
+                {
+                    perror("fstat failed");
+                    exit(EXIT_FAILURE);
+                }
+
+                bytes_left = file_stat.st_size;
+
+                std::cout << "File Size: " << bytes_left << " bytes\n";
+                sprintf(fileSize, "%d", bytes_left);
+
+                /* Sending file size */
+                bytes_sent = send(sockfd, fileSize, sizeof(fileSize), NULL);
+                if (bytes_sent < 0)
+                {
+                    perror("send failed");
+                    exit(EXIT_FAILURE);
+                }
+
+                fprintf(stdout, "Server sent %d bytes for the size\n", bytes_sent);
+                pollFd->events = POLLOUT;
                 state = State::SENDING;
+
                 return 0;
             }
             else if (req_kind == "rename")
             {
-
                 std::string new_filename = request_line.rbegin()[0];
                 std::string old_filename = request_line.rbegin()[1];
 
@@ -259,8 +362,8 @@ int Request::parse_request()
 
                 if (isGlobal)
                 {
-                    old_pathname = "./storage/shared/" + username + "_" + old_filename;
-                    new_filename = "./storage/shared/" + username + "_" + new_filename;
+                    old_pathname = "./storage/shared/" + old_filename;
+                    new_pathname = "./storage/shared/" + new_filename;
                 }
                 else
                 {
@@ -295,7 +398,7 @@ int Request::parse_request()
                 std::string filename = request_line.back();
                 std::string pathname;
                 if (isGlobal)
-                    pathname = "./storage/shared/" + username + "_" + filename;
+                    pathname = "./storage/shared/" + filename;
                 else
                     pathname = "./storage/private/" + username + "/" + filename;
 

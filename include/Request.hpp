@@ -13,15 +13,14 @@ private:
         FETCHING,
         LISTING,
         SENDING,
-        RECEIVING,
-        RENAMING,
-        DELETING,
+        RECEIVING
     };
 
     State state = State::FETCHING;
 
 public:
-    int sockfd;
+    ~Request();
+    int sockfd, localfd;
     struct pollfd *pollFd;
     int accept_request(int server_socket);
     int handle_request();

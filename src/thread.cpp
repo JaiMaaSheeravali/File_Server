@@ -93,7 +93,6 @@ void *thread_function(void *arg)
                 if (req->handle_request())
                 {
                     // request completed
-                    std::cout << "Client disconnected " << std::endl;
                     pollFds[i].fd = -1;
                     nfds--;
                     sockfdToReq.erase(fd);

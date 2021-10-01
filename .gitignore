@@ -1,6 +1,7 @@
 .vscode/
 .build/
 output/
+storage/
 main
 *.o
 CMakeLists.txt.user

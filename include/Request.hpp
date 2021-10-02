@@ -5,19 +5,23 @@
 class Request
 {
 private:
-    Client client;
-    static const int BUF_SIZE = 4096;
-    char buffer[BUF_SIZE] = "\0";
-
-    enum class State : unsigned char
+    Client client;                   // for storing the address of the cleint
+    char buffer[BUFSIZ] = "\0";      // for receiving ftp request and file data
+    const char *bigBuffer;           // for sending the list of files
+    std::string list;                // same as bigBuffer but in c++ string
+    enum class State : unsigned char // for maintaining the state of the request
     {
         FETCHING,
         LISTING,
         SENDING,
         RECEIVING
     };
+    State state = State::FETCHING; // initially retrieve ftp request from the client
 
-    State state = State::FETCHING;
+    int fetchFtpRequest();
+    int recvFileFromClient();
+    int sendListToClient();
+    int sendFileToClient();
 
 public:
     ~Request();
@@ -34,7 +38,7 @@ public:
     int get_file();
     int rename_file();
     int get_file_list();
-    int send_data(const char *buffer, const int size);
-    int recv_data(char *filename);
+    // int send_data(const char *buffer, const int size);
+    // int recv_data(char *filename);
     char *recv_string();
 };

@@ -17,6 +17,7 @@
 
 #define COMPLETED 1
 #define ONGOING 0
+
 // expecting
 // login/register username password\n
 // operation filename
@@ -106,6 +107,7 @@ int Request::parseFtpRequest()
         std::cout << "client wants to login" << std::endl;
         if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
         {
+            // "done" means client has sent the fpt header completely
             if (list_lines[1] == "done")
             {
                 // send(ACK);
@@ -183,8 +185,8 @@ int Request::parseListRequest()
         pathname = "./storage/shared/";
     else
         pathname = "./storage/private/" + client.username;
-    d = opendir(pathname.c_str());
 
+    d = opendir(pathname.c_str());
     if (d)
     {
         while ((dir = readdir(d)) != NULL)
@@ -243,7 +245,6 @@ int Request::parseDownloadRequest(const std::string &filename)
         return COMPLETED;
     }
 
-    // send(ACK)
     /* Get file stats */
     struct stat file_stat;
     if (fstat(diskfilefd, &file_stat) < 0)
@@ -258,14 +259,15 @@ int Request::parseDownloadRequest(const std::string &filename)
     sprintf(fileSize, "%d", bytes_left);
 
     /* Sending file size */
-    bytes_sent = send(sockfd, fileSize, sizeof(fileSize), 0);
-    if (bytes_sent < 0)
-    {
-        perror("send failed");
-        exit(EXIT_FAILURE);
-    }
+    // file size as send(ACK)
+    // bytes_sent = send(sockfd, fileSize, sizeof(fileSize), 0);
+    // if (bytes_sent < 0)
+    // {
+    //     perror("send failed");
+    //     exit(EXIT_FAILURE);
+    // }
+    // fprintf(stdout, "Server sent %d bytes for the size\n", bytes_sent);
 
-    fprintf(stdout, "Server sent %d bytes for the size\n", bytes_sent);
     pollFd->events = POLLOUT;
     state = State::SENDING;
 
@@ -296,7 +298,6 @@ int Request::parseAndExecuteRenameRequest(const std::string &new_filename, const
                   << new_pathname << "'!\n"
                   << RESET;
         // send(NACK)
-        return COMPLETED;
     }
     else
     {
@@ -306,8 +307,8 @@ int Request::parseAndExecuteRenameRequest(const std::string &new_filename, const
                   << new_pathname << "'.\n"
                   << RESET;
         //send(ACK)
-        return ONGOING;
     }
+    return COMPLETED;
 }
 int Request::parseAndExecuteDeleteRequest(const std::string &filename)
 {
@@ -324,7 +325,6 @@ int Request::parseAndExecuteDeleteRequest(const std::string &filename)
                   << pathname << "'!\n"
                   << RESET;
         // send(NACK)
-        return COMPLETED;
     }
     else
     {
@@ -333,8 +333,8 @@ int Request::parseAndExecuteDeleteRequest(const std::string &filename)
                   << "' from Server.\n"
                   << RESET;
         //send(ACK)
-        return ONGOING;
     }
+    return COMPLETED;
 }
 
 int Request::fetchFtpRequest()
@@ -390,7 +390,7 @@ int Request::recvFileFromClient()
         else if (bytes_recvd == 0)
         {
             // send(NACK)
-            perror("wtf");
+            perror("upload failed");
             std::cout << "client closed the connection abruptly" << std::endl;
             // maybe delete the file since the uploading was disrupted
             return COMPLETED;
@@ -425,7 +425,7 @@ int Request::sendListToClient()
             if (errno == EAGAIN)
             {
                 std::cout << "blocked" << std::endl;
-                // kernel buffer is full currently try again later (after poll)
+                // kernel buffer is full currently, try again later (after poll)
                 return ONGOING;
             }
             else

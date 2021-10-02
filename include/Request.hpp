@@ -26,6 +26,7 @@ private:
     int sendListToClient();
     int sendFileToClient();
 
+    // functions for parsing the ftp request after fetching it
     int parseFtpRequest();
     int parseListRequest();
     int parseUploadRequest(const std::string &filename);

@@ -1,35 +1,35 @@
-#include <iostream>
-#include <cstring>
-#include <string>
-#include <dirent.h>
-#include <sys/socket.h>
+// #include <iostream>
+// #include <cstring>
+// #include <string>
+// #include <dirent.h>
+// #include <sys/socket.h>
 
-using namespace std;
+// using namespace std;
 
-#include "../include/Request.hpp"
+// #include "../include/Request.hpp"
 
 
-int Request::get_file_list(){
+// int Request::get_file_list(){
 
-    DIR *d;
-    struct dirent *dir;
-    d = opendir(".");
-    string list;
-    dir = readdir(d);
-    dir = readdir(d);
-    if (d)
-    {
-        while ((dir = readdir(d)) != NULL)
-        {
-            int filename_size = sizeof(dir->d_name);
+//     DIR *d;
+//     struct dirent *dir;
+//     d = opendir(".");
+//     string list;
+//     dir = readdir(d);
+//     dir = readdir(d);
+//     if (d)
+//     {
+//         while ((dir = readdir(d)) != NULL)
+//         {
+//             int filename_size = sizeof(dir->d_name);
 
-            list.append(dir->d_name);
-            list.push_back('\n');
-        }
-        closedir(d);
-    }
+//             list.append(dir->d_name);
+//             list.push_back('\n');
+//         }
+//         closedir(d);
+//     }
     
-    send_data(list.c_str(), list.size());
+//     send_data(list.c_str(), list.size());
 
-    return 0;
-}
+//     return 0;
+// }

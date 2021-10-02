@@ -44,3 +44,19 @@ Request *Queue::dequeue()
     pthread_mutex_unlock(&mutex);
     return req;
 }
+Request *Queue::tryDequeue()
+{
+    // acquire lock for mutual exclusion to the queue
+    pthread_mutex_lock(&mutex);
+
+    Request *req = nullptr;
+    // if the queue is empty just return immediately
+    if (!myqueue.empty())
+    {
+        Request *req = myqueue.front();
+        myqueue.pop();
+    }
+
+    pthread_mutex_unlock(&mutex);
+    return req;
+}

@@ -28,6 +28,7 @@ void *thread_function(void *arg)
     {
         pollFds[i].fd = -1; // initially not interested in any sockfd
     }
+
     // initially no socket connection is being handled by the thread
     nfds_t nfds = 0;
 
@@ -37,40 +38,50 @@ void *thread_function(void *arg)
     while (true)
     {
         // thread(from thread pool) serves the request(a client)
-        // dequeued from the queue
-        // error
-        if (nfds == 0 && nfds < MAX_FDS)
+        // that is dequeued from the queue
+        if (nfds < MAX_FDS)
         {
-            req = q_requests->dequeue();
-            nfds++;
-            // a new connection is accepted so put it in the struct pollfd pollFds array
-            // look for empty slot in the pollFds array
+            if (nfds == 0)
+                // thread has no one to serve to so just
+                // wait indefinelty until a client connects
+                req = q_requests->dequeue();
+            else
+                // thread already has some clients to serve so just
+                // try to dequeue from the queue not wait indefinitely
+                req = q_requests->tryDequeue();
 
-            int i = 0;
-            while (i < MAX_FDS && pollFds[i].fd >= 0)
+            if (req != nullptr)
             {
-                i++;
+                nfds++;
+                // a new connection is accepted so put it in the struct pollfd pollFds array
+                // look for empty slot in the pollFds array
+                int i = 0;
+                while (i < MAX_FDS && pollFds[i].fd >= 0)
+                {
+                    i++;
+                }
+                // when the new connection is accepted, the server's thead from thread pool
+                // will 'read' the client's request from the socket (that's why POLLIN is used)
+                pollFds[i].fd = req->sockfd;
+                pollFds[i].events = POLLIN; // initially read from the socket
+
+                // tldr; hash map is used after poll system call
+                // long explanation: poll system call just tells us the socket(socket fd) at
+                // which the data can be read(POLLIN) or written(POLLOUT) but won't
+                // tell us which client that socket is connected to; for that we need a hash map
+                // that takes the socket id from poll system call and then returns the request object
+                // (which contains all the information about that client)
+                sockfdToReq[req->sockfd] = req;
+
+                // store the address of corresponding pollFd in the request obj
+                // this req->pollFd is required in the handle request funciton
+                // because it could happen the client which was sending the data
+                // now wants to receive the data from server
+                // so we will need to change the event from POLLIN to POLLOUT
+                req->pollFd = (pollFds + i);
             }
-            // when the new connection is accepted, the server's thead from thread pool
-            // will 'read' the client's request from the socket (that's why POLLIN is used)
-            pollFds[i].fd = req->sockfd;
-            pollFds[i].events = POLLIN; // initially read from the socket
-
-            // tldr; hash map is used after poll system call
-            /* long explanation: poll system call just tells us the socket(socket fd) at
-            which the data can be read(POLLIN) or written(POLLOUT) but won't
-            tell us which client that socket is connected to; for that we need a hash map
-            that takes the socket id from poll system call and then returns the request object
-            (which contains all the information about that client) */
-            sockfdToReq[req->sockfd] = req;
-
-            // store the address of corresponding pollFd in the request obj
-            // this req->pollFd is required in the handle request funciton
-            // because it could happen the client which was sending the data
-            // now wants to receive the data from server
-            // so we will need to change the event from POLLIN to POLLOUT
-            req->pollFd = (pollFds + i);
         }
+
         // wait for INFINITE time if the connections are full
         // else wait for TIMEOUT miliseconds
         int timeout = nfds == MAX_FDS ? INFINITE : TIMEOUT;
@@ -78,7 +89,7 @@ void *thread_function(void *arg)
 
         if (ready <= 0)
         {
-            std::cout << "not yet available\n";
+            // std::cout << "not yet available\n";
             continue; // either timeout or error occured then continue
         }
 
@@ -101,4 +112,5 @@ void *thread_function(void *arg)
             }
         }
     }
+    return nullptr;
 }

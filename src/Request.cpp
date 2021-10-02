@@ -17,9 +17,325 @@
 
 #define COMPLETED 1
 #define ONGOING 0
+// expecting
+// login/register username password\n
+// operation filename
 
-// using std::cin;
-// using std::cout;
+Request::~Request()
+{
+    std::cout << MAGENTA << "Client ";
+    client.printIpAddress();
+    std::cout << " disconnected" << RESET << std::endl;
+    close(sockfd);
+    close(diskfilefd);
+}
+
+int Request::accept_request(int server_socket)
+{
+    // create a nonblocking socket for the newly connected client and get its ip address
+    sockfd = accept4(server_socket, (struct sockaddr *)&(client.ipaddr),
+                     &(client.ipaddr_len), SOCK_NONBLOCK);
+
+    // store the presentational ip address in host and port number in serv
+    getnameinfo((struct sockaddr *)&client.ipaddr, client.ipaddr_len,
+                client.host, sizeof(client.host), client.serv,
+                sizeof(client.serv), NI_NUMERICHOST | NI_NUMERICSERV);
+
+    // print which client got connected to the server
+    std::cout << CYAN << "Client ";
+    client.printIpAddress();
+    std::cout << " connected" << RESET << std::endl;
+    return sockfd;
+}
+
+int Request::handle_request()
+{
+    int status = ONGOING;
+    switch (state)
+    {
+    case State::FETCHING:
+        status = fetchFtpRequest();
+        break;
+    case State::LISTING:
+        status = sendListToClient();
+        break;
+    case State::RECEIVING:
+        status = recvFileFromClient();
+        break;
+    case State::SENDING:
+        status = sendFileToClient();
+        break;
+    default:
+        // send(NACK)
+        break;
+    }
+    return status;
+}
+
+// ignore
+// is a return ACK required after fetching and processing the ftp header?
+// list send number of bytes as ACk
+// upload neccesity
+// download send file size in bytes as ACK
+// rename neccessity and sufficient
+// delete neccesesty and sufficeint
+
+int Request::parseFtpRequest()
+{
+    // extract username password, operation filename from buffer and then
+    // perform authorisation
+    // and then open the corresponding file if required
+    std::cout << buffer;
+    std::string header = buffer;
+
+    auto list_lines = ftp_tokenizer(header, '\n');
+    auto auth_line = ftp_tokenizer(list_lines[0], ' ');
+
+    if (auth_line.size() != 3)
+    {
+        std::cout << "error 400 malformed request syntax \n";
+        return 1;
+    }
+
+    std::string auth_kind = auth_line[0];
+    client.username = auth_line[1];
+    client.password = auth_line[2];
+
+    if (auth_kind == "login")
+    {
+        std::cout << "client wants to login" << std::endl;
+        if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
+        {
+            if (list_lines[1] == "done")
+            {
+                // send(ACK);
+                // client just wanted to login so we are done
+                return COMPLETED;
+            }
+
+            // client authoried and now wants to access a service
+            isGlobal = list_lines[1].find("-g") != std::string::npos;
+
+            auto request_line = ftp_tokenizer(list_lines[1], ' ');
+            std::string req_kind = request_line.front();
+
+            if (req_kind == "list")
+            {
+                return parseListRequest();
+            }
+            else if (req_kind == "upload")
+            {
+                bytes_left = stoi(request_line.rbegin()[1]);
+                return parseUploadRequest(request_line.back());
+            }
+            else if (req_kind == "download")
+            {
+                return parseDownloadRequest(request_line.back());
+            }
+            else if (req_kind == "rename")
+            {
+                auto rev_itr = request_line.rbegin();
+                return parseAndExecuteRenameRequest(rev_itr[0], rev_itr[1]);
+            }
+            else if (req_kind == "delete")
+            {
+                return parseAndExecuteDeleteRequest(request_line.back());
+            }
+            else
+            {
+                // send(NACK);
+                std::cout << "error 404 request not found" << std::endl;
+                return COMPLETED;
+            }
+        }
+        else
+        {
+            // send(NACK);
+            std::cout << "error 401 unauthorized client" << std::endl;
+            return COMPLETED;
+        }
+    }
+    else if (auth_kind == "register")
+    {
+        std::cout << "client wants to register" << std::endl;
+        // if (registerWithUsernamePassword(client.username, client.password))
+        // {
+        //   send(ACK);
+        // }
+        // else
+        // {
+        //   send(NACK);
+        // }
+        return COMPLETED;
+    }
+    else
+    {
+        std::cout << "error 400 wrong request syntax" << std::endl;
+        return COMPLETED;
+    }
+}
+int Request::parseListRequest()
+{
+    std::string pathname;
+    DIR *d;
+    struct dirent *dir;
+    if (isGlobal)
+        pathname = "./storage/shared/";
+    else
+        pathname = "./storage/private/" + client.username;
+    d = opendir(pathname.c_str());
+
+    if (d)
+    {
+        while ((dir = readdir(d)) != NULL)
+        {
+            if (dir->d_type == DT_REG)
+            {
+                list.append(dir->d_name);
+                list.push_back('\n');
+            }
+        }
+        closedir(d);
+    }
+    std::cout << BOLDBLUE << list
+              << RESET << std::endl;
+
+    bigBuffer = list.c_str();
+    bytes_left = list.size();
+
+    pollFd->events = POLLOUT;
+    state = State::LISTING;
+    return ONGOING;
+}
+int Request::parseUploadRequest(const std::string &filename)
+{
+    std::string pathname;
+    if (isGlobal)
+        pathname = "./storage/shared/" + filename;
+    else
+        pathname = "./storage/private/" + client.username + "/" + filename;
+
+    diskfilefd = open(pathname.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
+    if (errno == EEXIST)
+    {
+        // file already exists so you cant upload
+        // send(NACK)
+        return COMPLETED;
+    }
+
+    // send(ACK)
+    state = State::RECEIVING;
+    return ONGOING;
+}
+int Request::parseDownloadRequest(const std::string &filename)
+{
+    std::string pathname;
+    if (isGlobal)
+        pathname = "./storage/shared/" + filename;
+    else
+        pathname = "./storage/private/" + client.username + "/" + filename;
+
+    diskfilefd = open(pathname.c_str(), O_RDONLY);
+    if (errno == ENOENT)
+    {
+        // file does not exist so you cannot download
+        // send(NACK)
+        return COMPLETED;
+    }
+
+    // send(ACK)
+    /* Get file stats */
+    struct stat file_stat;
+    if (fstat(diskfilefd, &file_stat) < 0)
+    {
+        perror("fstat failed");
+        exit(EXIT_FAILURE);
+    }
+
+    bytes_left = file_stat.st_size;
+
+    std::cout << "File Size: " << bytes_left << " bytes\n";
+    sprintf(fileSize, "%d", bytes_left);
+
+    /* Sending file size */
+    bytes_sent = send(sockfd, fileSize, sizeof(fileSize), 0);
+    if (bytes_sent < 0)
+    {
+        perror("send failed");
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(stdout, "Server sent %d bytes for the size\n", bytes_sent);
+    pollFd->events = POLLOUT;
+    state = State::SENDING;
+
+    return ONGOING;
+}
+int Request::parseAndExecuteRenameRequest(const std::string &new_filename, const std::string &old_filename)
+{
+    std::string old_pathname;
+    std::string new_pathname;
+
+    if (isGlobal)
+    {
+        old_pathname = "./storage/shared/" + old_filename;
+        new_pathname = "./storage/shared/" + new_filename;
+    }
+    else
+    {
+        old_pathname = "./storage/private/" + client.username + "/" + old_filename;
+        new_pathname = "./storage/private/" + client.username + "/" + new_filename;
+    }
+
+    if (rename(old_pathname.c_str(), new_pathname.c_str()) != 0)
+    {
+
+        std::cerr << RED << "Error Renaming '"
+                  << old_pathname
+                  << "' to '"
+                  << new_pathname << "'!\n"
+                  << RESET;
+        // send(NACK)
+        return COMPLETED;
+    }
+    else
+    {
+        std::cout << GREEN
+                  << "Successfully renamed '" << old_pathname
+                  << "' to '"
+                  << new_pathname << "'.\n"
+                  << RESET;
+        //send(ACK)
+        return ONGOING;
+    }
+}
+int Request::parseAndExecuteDeleteRequest(const std::string &filename)
+{
+    std::string pathname;
+    if (isGlobal)
+        pathname = "./storage/shared/" + filename;
+    else
+        pathname = "./storage/private/" + client.username + "/" + filename;
+
+    if (remove(pathname.c_str()) != 0)
+    {
+        std::cerr << RED
+                  << "Error Deleting File: '"
+                  << pathname << "'!\n"
+                  << RESET;
+        // send(NACK)
+        return COMPLETED;
+    }
+    else
+    {
+        std::cout << GREEN << "Successfully deleted '"
+                  << pathname
+                  << "' from Server.\n"
+                  << RESET;
+        //send(ACK)
+        return ONGOING;
+    }
+}
 
 int Request::fetchFtpRequest()
 {
@@ -34,7 +350,7 @@ int Request::fetchFtpRequest()
     if ((strstr(buffer, "done")))
     {
         std::cout << "completion \n";
-        return parse_request();
+        return parseFtpRequest();
     }
     else
     {
@@ -42,7 +358,6 @@ int Request::fetchFtpRequest()
         return ONGOING;
     }
 }
-
 int Request::recvFileFromClient()
 {
     std::cout << "entered receiving section" << std::endl;
@@ -57,7 +372,7 @@ int Request::recvFileFromClient()
 
         // perform non blocking io on the socket file descriptor
         // get the data from the client, store it in the buffer
-        if (((bytes_recvd = recv(sockfd, buffer, BUFSIZ, NULL)) == -1))
+        if (((bytes_recvd = recv(sockfd, buffer, BUFSIZ, 0)) == -1))
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
@@ -98,7 +413,6 @@ int Request::recvFileFromClient()
     // send(ACK)
     return COMPLETED;
 }
-
 int Request::sendListToClient()
 {
     std::cout << "entered listing section" << std::endl;
@@ -106,7 +420,7 @@ int Request::sendListToClient()
     while (bytes_left > 0)
     {
         // perform non blocking io on the socket file descriptor
-        if (((bytes_sent = send(sockfd, bigBuffer, bytes_left, NULL)) == -1))
+        if (((bytes_sent = send(sockfd, bigBuffer, bytes_left, 0)) == -1))
         {
             if (errno == EAGAIN)
             {
@@ -129,7 +443,6 @@ int Request::sendListToClient()
     // send(ACK)
     return COMPLETED;
 }
-
 int Request::sendFileToClient()
 {
     std::cout << "entered sending section" << std::endl;
@@ -158,326 +471,4 @@ int Request::sendFileToClient()
 
     // send(ACK)
     return COMPLETED;
-}
-
-Request::~Request()
-{
-    std::cout << MAGENTA << "Client ";
-    client.printIpAddress();
-    std::cout << " disconnected" << RESET << std::endl;
-    close(sockfd);
-    close(diskfilefd);
-}
-
-int Request::accept_request(int server_socket)
-{
-    // create a nonblocking socket for the newly connected client and get its ip address
-    sockfd = accept4(server_socket, (struct sockaddr *)&(client.ipaddr),
-                     &(client.ipaddr_len), SOCK_NONBLOCK);
-
-    // store the presentational ip address in host and port number in serv
-    getnameinfo((struct sockaddr *)&client.ipaddr, client.ipaddr_len,
-                client.host, sizeof(client.host), client.serv,
-                sizeof(client.serv), NI_NUMERICHOST | NI_NUMERICSERV);
-
-    // print which client got connected to the server
-    std::cout << CYAN << "Client ";
-    client.printIpAddress();
-    std::cout << " connected" << RESET << std::endl;
-    return sockfd;
-}
-
-int Request::handle_request()
-{
-
-    // expecting
-    // login/register username password\n
-    // operation filename \r\n
-
-    int status = ONGOING;
-    switch (state)
-    {
-    case State::FETCHING:
-        status = fetchFtpRequest();
-        break;
-    case State::LISTING:
-        status = sendListToClient();
-        break;
-    case State::RECEIVING:
-        status = recvFileFromClient();
-        break;
-    case State::SENDING:
-        status = sendFileToClient();
-        break;
-    default:
-        // send(NACK)
-        break;
-    }
-    return status;
-}
-
-// is a return ACK required after fetching and processing the ftp header?
-// list send number of bytes as ACk
-// upload neccesity
-// download send file size in bytes as ACK
-// rename neccessity and sufficient
-// delete neccesesty and sufficeint
-int Request::parse_request()
-{
-    // extract username password, operation filename from buffer and then
-    // perform authorisation
-    // and then open the corresponding file if required
-    // if (!check_username_password(client.username, client.password))
-    // {
-    //     return -1;
-    // }
-    // state = State::RECEIVING;
-    std::cout << buffer;
-    // memset(buffer, '\0', sizeof(buffer));
-    std::string header = buffer;
-
-    auto list_lines = ftp_tokenizer(header, '\n');
-    auto auth_line = ftp_tokenizer(list_lines[0], ' ');
-
-    if (auth_line.size() != 3)
-    {
-        std::cout << "error 400 malformed request syntax \n";
-        return 1;
-    }
-
-    std::string auth_kind = auth_line[0];
-    std::string username = auth_line[1];
-    std::string password = auth_line[2];
-
-    if (auth_kind == "login")
-    {
-        std::cout << "client wants to login" << std::endl;
-        if (/*loginWithUsernamePassword(username, password)  */ true)
-        {
-            if (list_lines[1] == "done")
-            {
-                // send(ACK);
-                return 1;
-            }
-
-            bool isGlobal = list_lines[1].find("-g") != std::string::npos;
-
-            auto request_line = ftp_tokenizer(list_lines[1], ' ');
-            std::string req_kind = request_line.front();
-
-            if (req_kind == "list")
-            {
-                std::string pathname;
-                DIR *d;
-                struct dirent *dir;
-                if (isGlobal)
-                    pathname = "./storage/shared/";
-                else
-                    pathname = "./storage/private/" + username;
-                d = opendir(pathname.c_str());
-
-                if (d)
-                {
-                    while ((dir = readdir(d)) != NULL)
-                    {
-                        if (dir->d_type == DT_REG)
-                        {
-                            list.append(dir->d_name);
-                            list.push_back('\n');
-                        }
-                    }
-                    closedir(d);
-                }
-                std::cout << BOLDBLUE << list
-                          << RESET << std::endl;
-
-                bigBuffer = list.c_str();
-                bytes_left = list.size();
-                pollFd->events = POLLOUT;
-                state = State::LISTING;
-                return 0;
-            }
-            else if (req_kind == "upload")
-            {
-                std::string filename = request_line.rbegin()[0];
-                bytes_left = stoi(request_line.rbegin()[1]);
-                std::string pathname;
-                if (isGlobal)
-                    pathname = "./storage/shared/" + filename;
-                else
-                    pathname = "./storage/private/" + username + "/" + filename;
-
-                diskfilefd = open(pathname.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
-                if (errno == EEXIST)
-                {
-                    // file already exists so you cant upload
-                    // send(NACK)
-                    return 1;
-                }
-
-                // send(ACK)
-                state = State::RECEIVING;
-                return 0;
-            }
-            else if (req_kind == "download")
-            {
-                std::string filename = request_line.back();
-                std::string pathname;
-                if (isGlobal)
-                    pathname = "./storage/shared/" + filename;
-                else
-                    pathname = "./storage/private/" + username + "/" + filename;
-
-                diskfilefd = open(pathname.c_str(), O_RDONLY);
-                if (errno == ENOENT)
-                {
-                    // file does not exist so you cannot download
-                    // send(NACK)
-                    return 1;
-                }
-
-                // send(ACK)
-                /* Get file stats */
-                struct stat file_stat;
-                if (fstat(diskfilefd, &file_stat) < 0)
-                {
-                    perror("fstat failed");
-                    exit(EXIT_FAILURE);
-                }
-
-                bytes_left = file_stat.st_size;
-
-                std::cout << "File Size: " << bytes_left << " bytes\n";
-                sprintf(fileSize, "%d", bytes_left);
-
-                /* Sending file size */
-                bytes_sent = send(sockfd, fileSize, sizeof(fileSize), NULL);
-                if (bytes_sent < 0)
-                {
-                    perror("send failed");
-                    exit(EXIT_FAILURE);
-                }
-
-                fprintf(stdout, "Server sent %d bytes for the size\n", bytes_sent);
-                pollFd->events = POLLOUT;
-                state = State::SENDING;
-
-                return 0;
-            }
-            else if (req_kind == "rename")
-            {
-                std::string new_filename = request_line.rbegin()[0];
-                std::string old_filename = request_line.rbegin()[1];
-
-                std::string old_pathname;
-                std::string new_pathname;
-
-                if (isGlobal)
-                {
-                    old_pathname = "./storage/shared/" + old_filename;
-                    new_pathname = "./storage/shared/" + new_filename;
-                }
-                else
-                {
-                    old_pathname = "./storage/private/" + username + "/" + old_filename;
-                    new_pathname = "./storage/private/" + username + "/" + new_filename;
-                }
-
-                if (rename(old_pathname.c_str(), new_pathname.c_str()) != 0)
-                {
-
-                    std::cerr << RED << "Error Renaming '"
-                              << old_pathname
-                              << "' to '"
-                              << new_pathname << "'!\n"
-                              << RESET;
-                    // send(NACK)
-                    return 1;
-                }
-                else
-                {
-                    std::cout << GREEN
-                              << "Successfully renamed '" << old_pathname
-                              << "' to '"
-                              << new_pathname << "'.\n"
-                              << RESET;
-                    //send(ACK)
-                    return 0;
-                }
-            }
-            else if (req_kind == "delete")
-            {
-                std::string filename = request_line.back();
-                std::string pathname;
-                if (isGlobal)
-                    pathname = "./storage/shared/" + filename;
-                else
-                    pathname = "./storage/private/" + username + "/" + filename;
-
-                if (remove(pathname.c_str()) != 0)
-                {
-                    std::cerr << RED
-                              << "Error Deleting File: '"
-                              << pathname << "'!\n"
-                              << RESET;
-                    // send(NACK)
-                    return 1;
-                }
-                else
-                {
-                    std::cout << GREEN << "Successfully deleted '"
-                              << pathname
-                              << "' from Server.\n"
-                              << RESET;
-                    //send(ACK)
-                    return 0;
-                }
-            }
-            else
-            {
-                // send(NACK);
-                std::cout << "error 404 request not found" << std::endl;
-                return 1;
-            }
-        }
-        // else
-        // {
-        //     send(NACK);
-        // }
-    }
-    else if (auth_kind == "register")
-    {
-        std::cout << "client wants to register" << std::endl;
-        // if (registerWithUsernamePassword(username, password))
-        // {
-        //   send(ACK);
-
-        // }
-        // else
-        // {
-        //   send(NACK);
-
-        // }
-        return 1;
-    }
-    else
-    {
-        std::cout << "error 404 request not found" << std::endl;
-        return 1;
-    }
-
-    return 0;
-}
-
-int Request::perform_operation()
-{
-    switch (state)
-    {
-    case State::RECEIVING:
-        /* code */
-        break;
-
-    default:
-        break;
-    }
 }

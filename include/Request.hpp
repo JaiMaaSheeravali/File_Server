@@ -17,22 +17,28 @@ private:
         RECEIVING
     };
     State state = State::FETCHING; // initially retrieve ftp request from the client
+    int bytes_sent = 0, bytes_recvd = 0, bytes_left = 0;
+    char fileSize[64];
+    bool isGlobal = false;
 
     int fetchFtpRequest();
     int recvFileFromClient();
     int sendListToClient();
     int sendFileToClient();
 
+    int parseFtpRequest();
+    int parseListRequest();
+    int parseUploadRequest(const std::string &filename);
+    int parseDownloadRequest(const std::string &filename);
+    int parseAndExecuteRenameRequest(const std::string &new_filename, const std::string &old_filename);
+    int parseAndExecuteDeleteRequest(const std::string &filename);
+
 public:
     ~Request();
     int sockfd, diskfilefd;
-    char fileSize[64];
-    int bytes_sent = 0, bytes_recvd = 0, bytes_left = 0;
     struct pollfd *pollFd;
     int accept_request(int server_socket);
     int handle_request();
-    int perform_operation();
-    int parse_request();
     int send_file();
     int delete_file();
     int get_file();

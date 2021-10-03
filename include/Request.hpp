@@ -2,13 +2,19 @@
 #include "../include/Client.hpp"
 #include <poll.h>
 
+#define COMPLETED 1
+#define ONGOING 0
+
 class Request
 {
 private:
     Client client;                   // for storing the address of the cleint
     char buffer[BUFSIZ] = "\0";      // for receiving ftp request and file data
     const char *bigBuffer;           // for sending the list of files
+    char *varBuffer;
+    char *result;
     std::string list;                // same as bigBuffer but in c++ string
+    std::string pathname;
     enum class State : unsigned char // for maintaining the state of the request
     {
         FETCHING,

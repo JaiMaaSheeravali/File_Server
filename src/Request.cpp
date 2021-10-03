@@ -1,5 +1,3 @@
-#include "../include/Request.hpp"
-
 #include <iostream>
 #include <string>
 #include <unistd.h>
@@ -9,14 +7,15 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fstream>
 #include <sys/sendfile.h>
 
 #include "../include/color.hpp"
 #include "../include/helper.hpp"
 #include "../include/parse.hpp"
+#include "../include/Request.hpp"
 
-#define COMPLETED 1
-#define ONGOING 0
+using namespace std;
 
 // expecting
 // login/register username password\n
@@ -81,261 +80,7 @@ int Request::handle_request()
 // rename neccessity and sufficient
 // delete neccesesty and sufficeint
 
-int Request::parseFtpRequest()
-{
-    // extract username password, operation filename from buffer and then
-    // perform authorisation
-    // and then open the corresponding file if required
-    std::cout << buffer;
-    std::string header = buffer;
 
-    auto list_lines = ftp_tokenizer(header, '\n');
-    auto auth_line = ftp_tokenizer(list_lines[0], ' ');
-
-    if (auth_line.size() != 3)
-    {
-        std::cout << "error 400 malformed request syntax \n";
-        return 1;
-    }
-
-    std::string auth_kind = auth_line[0];
-    client.username = auth_line[1];
-    client.password = auth_line[2];
-
-    if (auth_kind == "login")
-    {
-        std::cout << "client wants to login" << std::endl;
-        if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
-        {
-            // "done" means client has sent the fpt header completely
-            if (list_lines[1] == "done")
-            {
-                // send(ACK);
-                // client just wanted to login so we are done
-                return COMPLETED;
-            }
-
-            // client authoried and now wants to access a service
-            isGlobal = list_lines[1].find("-g") != std::string::npos;
-
-            auto request_line = ftp_tokenizer(list_lines[1], ' ');
-            std::string req_kind = request_line.front();
-
-            if (req_kind == "list")
-            {
-                return parseListRequest();
-            }
-            else if (req_kind == "upload")
-            {
-                bytes_left = stoi(request_line.rbegin()[1]);
-                return parseUploadRequest(request_line.back());
-            }
-            else if (req_kind == "download")
-            {
-                return parseDownloadRequest(request_line.back());
-            }
-            else if (req_kind == "rename")
-            {
-                auto rev_itr = request_line.rbegin();
-                return parseAndExecuteRenameRequest(rev_itr[0], rev_itr[1]);
-            }
-            else if (req_kind == "delete")
-            {
-                return parseAndExecuteDeleteRequest(request_line.back());
-            }
-            else
-            {
-                // send(NACK);
-                std::cout << "error 404 request not found" << std::endl;
-                return COMPLETED;
-            }
-        }
-        else
-        {
-            // send(NACK);
-            std::cout << "error 401 unauthorized client" << std::endl;
-            return COMPLETED;
-        }
-    }
-    else if (auth_kind == "register")
-    {
-        std::cout << "client wants to register" << std::endl;
-        // if (registerWithUsernamePassword(client.username, client.password))
-        // {
-        //   send(ACK);
-        // }
-        // else
-        // {
-        //   send(NACK);
-        // }
-        return COMPLETED;
-    }
-    else
-    {
-        std::cout << "error 400 wrong request syntax" << std::endl;
-        return COMPLETED;
-    }
-}
-int Request::parseListRequest()
-{
-    std::string pathname;
-    DIR *d;
-    struct dirent *dir;
-    if (isGlobal)
-        pathname = "./storage/shared/";
-    else
-        pathname = "./storage/private/" + client.username;
-
-    d = opendir(pathname.c_str());
-    if (d)
-    {
-        while ((dir = readdir(d)) != NULL)
-        {
-            if (dir->d_type == DT_REG)
-            {
-                list.append(dir->d_name);
-                list.push_back('\n');
-            }
-        }
-        closedir(d);
-    }
-    std::cout << BOLDBLUE << list
-              << RESET << std::endl;
-
-    bigBuffer = list.c_str();
-    bytes_left = list.size();
-
-    pollFd->events = POLLOUT;
-    state = State::LISTING;
-    return ONGOING;
-}
-int Request::parseUploadRequest(const std::string &filename)
-{
-    std::string pathname;
-    if (isGlobal)
-        pathname = "./storage/shared/" + filename;
-    else
-        pathname = "./storage/private/" + client.username + "/" + filename;
-
-    diskfilefd = open(pathname.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
-    if (errno == EEXIST)
-    {
-        // file already exists so you cant upload
-        // send(NACK)
-        return COMPLETED;
-    }
-
-    // send(ACK)
-    state = State::RECEIVING;
-    return ONGOING;
-}
-int Request::parseDownloadRequest(const std::string &filename)
-{
-    std::string pathname;
-    if (isGlobal)
-        pathname = "./storage/shared/" + filename;
-    else
-        pathname = "./storage/private/" + client.username + "/" + filename;
-
-    diskfilefd = open(pathname.c_str(), O_RDONLY);
-    if (errno == ENOENT)
-    {
-        // file does not exist so you cannot download
-        // send(NACK)
-        return COMPLETED;
-    }
-
-    /* Get file stats */
-    struct stat file_stat;
-    if (fstat(diskfilefd, &file_stat) < 0)
-    {
-        perror("fstat failed");
-        exit(EXIT_FAILURE);
-    }
-
-    bytes_left = file_stat.st_size;
-
-    std::cout << "File Size: " << bytes_left << " bytes\n";
-    sprintf(fileSize, "%d", bytes_left);
-
-    /* Sending file size */
-    // file size as send(ACK)
-    // bytes_sent = send(sockfd, fileSize, sizeof(fileSize), 0);
-    // if (bytes_sent < 0)
-    // {
-    //     perror("send failed");
-    //     exit(EXIT_FAILURE);
-    // }
-    // fprintf(stdout, "Server sent %d bytes for the size\n", bytes_sent);
-
-    pollFd->events = POLLOUT;
-    state = State::SENDING;
-
-    return ONGOING;
-}
-int Request::parseAndExecuteRenameRequest(const std::string &new_filename, const std::string &old_filename)
-{
-    std::string old_pathname;
-    std::string new_pathname;
-
-    if (isGlobal)
-    {
-        old_pathname = "./storage/shared/" + old_filename;
-        new_pathname = "./storage/shared/" + new_filename;
-    }
-    else
-    {
-        old_pathname = "./storage/private/" + client.username + "/" + old_filename;
-        new_pathname = "./storage/private/" + client.username + "/" + new_filename;
-    }
-
-    if (rename(old_pathname.c_str(), new_pathname.c_str()) != 0)
-    {
-
-        std::cerr << RED << "Error Renaming '"
-                  << old_pathname
-                  << "' to '"
-                  << new_pathname << "'!\n"
-                  << RESET;
-        // send(NACK)
-    }
-    else
-    {
-        std::cout << GREEN
-                  << "Successfully renamed '" << old_pathname
-                  << "' to '"
-                  << new_pathname << "'.\n"
-                  << RESET;
-        //send(ACK)
-    }
-    return COMPLETED;
-}
-int Request::parseAndExecuteDeleteRequest(const std::string &filename)
-{
-    std::string pathname;
-    if (isGlobal)
-        pathname = "./storage/shared/" + filename;
-    else
-        pathname = "./storage/private/" + client.username + "/" + filename;
-
-    if (remove(pathname.c_str()) != 0)
-    {
-        std::cerr << RED
-                  << "Error Deleting File: '"
-                  << pathname << "'!\n"
-                  << RESET;
-        // send(NACK)
-    }
-    else
-    {
-        std::cout << GREEN << "Successfully deleted '"
-                  << pathname
-                  << "' from Server.\n"
-                  << RESET;
-        //send(ACK)
-    }
-    return COMPLETED;
-}
 
 int Request::fetchFtpRequest()
 {
@@ -358,6 +103,7 @@ int Request::fetchFtpRequest()
         return ONGOING;
     }
 }
+
 int Request::recvFileFromClient()
 {
     std::cout << "entered receiving section" << std::endl;
@@ -413,6 +159,8 @@ int Request::recvFileFromClient()
     // send(ACK)
     return COMPLETED;
 }
+
+
 int Request::sendListToClient()
 {
     std::cout << "entered listing section" << std::endl;
@@ -440,9 +188,11 @@ int Request::sendListToClient()
         bytes_left -= bytes_sent;
     }
 
+    std::cout << "completed list\n";
     // send(ACK)
     return COMPLETED;
 }
+
 int Request::sendFileToClient()
 {
     std::cout << "entered sending section" << std::endl;

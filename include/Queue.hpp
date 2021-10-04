@@ -15,4 +15,5 @@ public:
     ~Queue();
     void enqueue(Request *req);
     Request *dequeue();
+    Request* tryDequeue();
 };

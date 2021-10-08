@@ -284,7 +284,17 @@ int Request::parseAndExecuteRenameRequest(const std::string &new_filename, const
         new_pathname = "./storage/private/" + client.username + "/" + new_filename;
     }
 
-    if (rename(old_pathname.c_str(), new_pathname.c_str()) != 0)
+    if(access(old_pathname.c_str(), F_OK ) == -1)
+    {
+
+        std::cout << RED << "Rename Error: file at '" << old_pathname << "' doesn't exist!\n" << RESET;
+        send_ack('2');
+    } else if(access(new_pathname.c_str(), F_OK) != -1){
+
+        std::cout << RED << "Rename Error: file with '" << new_pathname << "' already exists can't overwrite!\n" << RESET;
+        send_ack('3');
+
+    } else if (rename(old_pathname.c_str(), new_pathname.c_str()) != 0)
     {
 
         std::cerr << RED << "Error Renaming '"
@@ -292,7 +302,7 @@ int Request::parseAndExecuteRenameRequest(const std::string &new_filename, const
                   << "' to '"
                   << new_pathname << "'!\n"
                   << RESET;
-        // send(NACK)
+        send_ack('1');
     }
     else
     {
@@ -301,7 +311,7 @@ int Request::parseAndExecuteRenameRequest(const std::string &new_filename, const
                   << "' to '"
                   << new_pathname << "'.\n"
                   << RESET;
-        //send(ACK)
+        send_ack('0');
     }
     return COMPLETED;
 }
@@ -313,13 +323,19 @@ int Request::parseAndExecuteDeleteRequest(const std::string &filename)
     else
         pathname = "./storage/private/" + client.username + "/" + filename;
 
-    if (remove(pathname.c_str()) != 0)
+    if(access( pathname.c_str(), F_OK ) == -1)
+    {
+
+        std::cout << RED << "Delete Error: file at '" << pathname << "' doesn't exist!\n" << RESET;
+        send_ack('2');
+
+    } else if (remove(pathname.c_str()) != 0)
     {
         std::cerr << RED
                   << "Error Deleting File: '"
                   << pathname << "'!\n"
                   << RESET;
-        // send(NACK)
+        send_ack('1');
     }
     else
     {
@@ -327,7 +343,7 @@ int Request::parseAndExecuteDeleteRequest(const std::string &filename)
                   << pathname
                   << "' from Server.\n"
                   << RESET;
-        //send(ACK)
+        send_ack('0');
     }
     return COMPLETED;
 }

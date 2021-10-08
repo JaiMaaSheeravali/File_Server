@@ -80,7 +80,11 @@ int Request::handle_request()
 // rename neccessity and sufficient
 // delete neccesesty and sufficeint
 
-
+void Request::send_ack(const char c) {
+    if(send(sockfd, &c, sizeof(c), 0) < 0){
+        cout << RED << "Error sending ack!" << RESET;
+    }
+}
 
 int Request::fetchFtpRequest()
 {
@@ -129,13 +133,13 @@ int Request::recvFileFromClient()
             else
             {
                 perror("failed file transfer");
-                // send(NACK)
+                send_ack('1');
                 return COMPLETED;
             }
         }
         else if (bytes_recvd == 0)
         {
-            // send(NACK)
+            send_ack('2');
             perror("upload failed");
             std::cout << "client closed the connection abruptly" << std::endl;
             // maybe delete the file since the uploading was disrupted
@@ -149,14 +153,14 @@ int Request::recvFileFromClient()
             // copy the data from the buffer to the local disk file
             if (writen(diskfilefd, buffer, bytes_recvd) < 0)
             {
-                // send(NACK)
+                send_ack('3');
                 perror("disk write failed\n");
                 return COMPLETED;
             }
         }
     }
 
-    // send(ACK)
+    send_ack('0');
     return COMPLETED;
 }
 

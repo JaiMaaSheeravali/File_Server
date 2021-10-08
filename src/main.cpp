@@ -25,7 +25,7 @@ void makeDirectory(char* dirname){
 		// do nothing
 	}
 	else if(ENOENT == errno){
-		if(mkdir("storage", 0777) == -1){
+		if(mkdir(dirname, 0777) == -1){
 			std::cerr << "Error Creating Storage Directory.\n";
 		}
 	} else {

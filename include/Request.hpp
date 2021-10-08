@@ -51,6 +51,7 @@ public:
     int get_file();
     int rename_file();
     int get_file_list();
+    void send_ack(const char c);
     // int send_data(const char *buffer, const int size);
     // int recv_data(char *filename);
     char *recv_string();

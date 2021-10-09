@@ -6,6 +6,7 @@ main
 *.o
 CMakeLists.txt.user
 CMakeCache.txt
+CMakeLists.txt
 CMakeFiles
 CMakeScripts
 Testing

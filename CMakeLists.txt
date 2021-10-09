@@ -13,6 +13,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 # I../includes
 include_directories(include)
+include_directories(/usr/include/cppconn)
+link_directories(/usr/lib)
 
 # puts all .cpp files inside src to the SOURCES variable
 file(GLOB SOURCES src/*.c*)
@@ -22,6 +24,10 @@ add_executable(${EXEC} ${SOURCES})
 
 # include pthread library
 find_package (Threads REQUIRED)
+
+target_link_libraries(${EXEC}
+    mysqlcppconn
+)
 
 target_link_libraries(${EXEC}
     ${CMAKE_THREAD_LIBS_INIT}

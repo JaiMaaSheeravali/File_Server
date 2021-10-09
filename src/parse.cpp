@@ -95,12 +95,14 @@ int Request::parseFtpRequest()
 
     if (auth_kind == "login")
     {
-        // std::cout << "client wants to login" << std::endl;
-        if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
+        std::cout << "client wants to login" << std::endl;
+        if (login_user(client.username, client.password))
+        // if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
         {
             // "done" means client has sent the fpt header completely
             if (list_lines[1] == "done")
             {
+                cout << "Completed login on server" << endl;
                 // send(ACK);
                 // client just wanted to login so we are done
                 return COMPLETED;

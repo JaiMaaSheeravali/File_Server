@@ -4,6 +4,7 @@
 #include <cstring>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
@@ -133,13 +134,13 @@ int Request::recvFileFromClient()
             else
             {
                 perror("failed file transfer");
-                send_ack('1');
+                // send_ack('1');
                 return COMPLETED;
             }
         }
         else if (bytes_recvd == 0)
         {
-            send_ack('2');
+            // send_ack('2');
             perror("upload failed");
             std::cout << "client closed the connection abruptly" << std::endl;
             // maybe delete the file since the uploading was disrupted
@@ -153,14 +154,14 @@ int Request::recvFileFromClient()
             // copy the data from the buffer to the local disk file
             if (writen(diskfilefd, buffer, bytes_recvd) < 0)
             {
-                send_ack('3');
+                // send_ack('3');
                 perror("disk write failed\n");
                 return COMPLETED;
             }
         }
     }
 
-    send_ack('0');
+    // send_ack('0');
     return COMPLETED;
 }
 
@@ -215,7 +216,7 @@ int Request::sendFileToClient()
             else
             {
                 perror("failed file transfer");
-                // send(NACK)
+                //
                 return COMPLETED;
             }
         }
@@ -223,6 +224,5 @@ int Request::sendFileToClient()
         bytes_left -= bytes_sent;
     }
 
-    // send(ACK)
     return COMPLETED;
 }

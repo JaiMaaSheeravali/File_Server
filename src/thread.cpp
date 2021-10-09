@@ -98,7 +98,7 @@ void *thread_function(void *arg)
             auto [fd, events, revents] = pollFds[i];
             if (fd != -1 && (revents & events))
             {
-                std::cout << fd << std::endl;
+                // std::cout << fd << std::endl;
                 req = sockfdToReq[fd];
 
                 if (req->handle_request())

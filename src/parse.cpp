@@ -12,6 +12,7 @@
 #include <vector>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
@@ -77,7 +78,6 @@ int Request::parseFtpRequest()
     // extract username password, operation filename from buffer and then
     // perform authorisation
     // and then open the corresponding file if required
-    std::cout << buffer;
     std::string header = buffer;
 
     auto list_lines = ftp_tokenizer(header, '\n');
@@ -95,7 +95,7 @@ int Request::parseFtpRequest()
 
     if (auth_kind == "login")
     {
-        std::cout << "client wants to login" << std::endl;
+        // std::cout << "client wants to login" << std::endl;
         if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
         {
             // "done" means client has sent the fpt header completely
@@ -194,12 +194,13 @@ int Request::parseListRequest()
               << RESET << std::endl;
 
     bigBuffer = list.c_str();
-    bytes_left = list.size();
+    bytes_left = list.size()+1;
 
     pollFd->events = POLLOUT;
     state = State::LISTING;
 
-    if(send(sockfd, &bytes_left, sizeof(int), 0) < 0){
+    int size = htonl(bytes_left);
+    if(send(sockfd, &size, sizeof(int), 0) < 0){
         std::cerr << "List Failed\n";
     }
 
@@ -218,11 +219,11 @@ int Request::parseUploadRequest(const std::string &filename)
     if (errno == EEXIST)
     {
         // file already exists so you cant upload
-        // send(NACK)
+        send_ack('2');
         return COMPLETED;
     }
 
-    // send(ACK)
+    send_ack('0');
     state = State::RECEIVING;
     return ONGOING;
 }
@@ -239,7 +240,7 @@ int Request::parseDownloadRequest(const std::string &filename)
     if (errno == ENOENT)
     {
         // file does not exist so you cannot download
-        // send(NACK)
+        send_ack('2');
         return COMPLETED;
     }
 
@@ -248,8 +249,11 @@ int Request::parseDownloadRequest(const std::string &filename)
     if (fstat(diskfilefd, &file_stat) < 0)
     {
         perror("fstat failed");
+        send_ack('1');
         exit(EXIT_FAILURE);
     }
+
+    send_ack('0');
 
     bytes_left = file_stat.st_size;
 
@@ -261,7 +265,8 @@ int Request::parseDownloadRequest(const std::string &filename)
     state = State::SENDING;
 
     cout << "Sending bytes " << bytes_left << endl;
-    if(send(sockfd, &bytes_left, sizeof(int), 0) < 0){
+    int size = htonl(bytes_left);
+    if(send(sockfd, &size, sizeof(int), 0) < 0){
         std::cerr << "Download Failed\n";
     }
 

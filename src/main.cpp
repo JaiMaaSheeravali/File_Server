@@ -18,21 +18,6 @@ pthread_t threads[THREAD_POOL_SIZE];
 Queue list_queues[THREAD_POOL_SIZE];
 
 
-void makeDirectory(char* dirname){
-	DIR* dir = opendir(dirname);
-
-	if(dir){
-		// do nothing
-	}
-	else if(ENOENT == errno){
-		if(mkdir(dirname, 0777) == -1){
-			std::cerr << "Error Creating Storage Directory.\n";
-		}
-	} else {
-		std::cerr << "Error opening Storage Directory\n";
-	}
-}
-
 int main(int argc, char *argv[])
 {
 

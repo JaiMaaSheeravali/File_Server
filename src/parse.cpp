@@ -95,13 +95,15 @@ int Request::parseFtpRequest()
 
     if (auth_kind == "login")
     {
-        // std::cout << "client wants to login" << std::endl;
-        if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
+        std::cout << "client wants to login" << std::endl;
+        if (login_user(client.username, client.password))
+        // if (/*loginWithUsernamePassword(client.username, client.password)  */ true)
         {
             // "done" means client has sent the fpt header completely
             if (list_lines[1] == "done")
             {
-                // send(ACK);
+                cout << "Completed login on server" << endl;
+                send_ack('0');
                 // client just wanted to login so we are done
                 return COMPLETED;
             }
@@ -143,7 +145,7 @@ int Request::parseFtpRequest()
         }
         else
         {
-            // send(NACK);
+            send_ack('1');
             std::cout << "error 401 unauthorized client" << std::endl;
             return COMPLETED;
         }
@@ -151,14 +153,21 @@ int Request::parseFtpRequest()
     else if (auth_kind == "register")
     {
         std::cout << "client wants to register" << std::endl;
-        // if (registerWithUsernamePassword(client.username, client.password))
-        // {
-        //   send(ACK);
-        // }
-        // else
-        // {
-        //   send(NACK);
-        // }
+        string path = "storage/private/"+client.username;
+
+        if(login_user(client.username, client.password)){
+            send_ack('2');
+
+        } else if(checkifExisting((char*)(path.c_str()))){
+            send_ack('3');
+            
+        } else if(register_user(client.username, client.password)){
+            
+            makeDirectory((char*)(path.c_str()));
+            send_ack('0');
+        } else {
+            send_ack('1');
+        }
         return COMPLETED;
     }
     else

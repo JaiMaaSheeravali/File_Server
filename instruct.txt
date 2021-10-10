@@ -1,0 +1,4 @@
+CREATE DATABASE IF NOT EXISTS file_server;
+USE file_server;
+CREATE TABLE IF NOT EXISTS ACCOUNT(id int PRIMARY KEY AUTO_INCREMENT, username varchar(45) NOT NULL UNIQUE, password varchar(45) NOT NULL);
+

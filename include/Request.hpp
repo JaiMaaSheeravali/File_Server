@@ -1,5 +1,6 @@
 #pragma once
 #include "../include/Client.hpp"
+#include<string>
 #include <poll.h>
 
 #define COMPLETED 1
@@ -39,6 +40,10 @@ private:
     int parseDownloadRequest(const std::string &filename);
     int parseAndExecuteRenameRequest(const std::string &new_filename, const std::string &old_filename);
     int parseAndExecuteDeleteRequest(const std::string &filename);
+    
+    // functions for authentication
+    bool login_user(std::string username, std::string password);
+    bool register_user(std::string username, std::string password);
 
 public:
     ~Request();

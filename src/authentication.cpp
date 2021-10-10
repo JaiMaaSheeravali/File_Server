@@ -18,7 +18,7 @@ void debug_error(sql::SQLException &e){
 sql::Connection * connect_db(){
     const string url = "localhost";
     const string user = "root";
-    const string pass1 = "";
+    const string pass1 = "naman";
     const string database = "file_server";
     sql::Driver *driver;
     sql::Connection *myConn;
